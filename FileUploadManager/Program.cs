@@ -24,6 +24,8 @@ public class Program
             app.UseSwaggerUI();
         }
 
+        app.UseStaticFiles();
+
         app.MapControllers();
 
         app.UseHttpsRedirection();

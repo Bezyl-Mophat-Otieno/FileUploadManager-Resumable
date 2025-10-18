@@ -29,13 +29,17 @@ public class FileUploadController(IWebHostEnvironment env): ControllerBase
 
         await file.CopyToAsync(stream);
 
+        var baseUrl = $"{Request.Scheme}//{Request.Host}";
+        var fileUrl = $"{baseUrl}/uploads/{newFileName}";
+
         return Ok(new
         {
             fileName = file.FileName,
             savedAs = newFileName,
             contentType = file.ContentType,
             sizeInKBB = Math.Round((file.Length / 1024.0), 2),
-            uploadTime = DateTime.UtcNow
+            uploadTime = DateTime.UtcNow,
+            publicUrl = fileUrl
             
         });
 
