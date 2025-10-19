@@ -19,7 +19,17 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="wwwroot\uploads\temp\f64df8a4-7b42-42b9-a342-c9519975c37b\" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\05fe7770-e6fe-4201-8af1-092d426a7bbd_Mystery Shopper Report Dunkin Mission Oct 17 2025.pdf" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\3a363cdf-71eb-4b90-9139-8b7b1f22e4d7_AI Drug Availability Pricing Accessibility.pdf" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\7b654cf5-ddc6-4f8b-8bcf-03b7ba48e626_ASSIGNMENT HCI-SEPT 2025.pdf" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\eca505ad-d679-468e-93eb-1395a2a9a27a_ASSIGNMENT HCI-SEPT 2025.pdf" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\f280d9b6-ee56-4cb3-9ecd-de58466b7a53_Mystery Shopper Report Dunkin Mission Oct 17 2025.pdf" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\temp\151d8591-0d9a-4040-995a-114cf94fde01\chunk_1" />
+      <_ContentIncludedByDefault Remove="wwwroot\uploads\temp\151d8591-0d9a-4040-995a-114cf94fde01\metadata.json" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="wwwroot\" />
     </ItemGroup>
 
 </Project>

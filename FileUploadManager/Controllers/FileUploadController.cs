@@ -103,7 +103,9 @@ public class FileUploadController: ControllerBase
          await using var stream  = new FileStream(Path.Combine(chunkDir, chunkFileName),  FileMode.Create);
          await chunk.CopyToAsync(stream);
 
-         var totalChunks = GetTotalChunksFromMetadata(chunkDir);
+         var metadata = GetFileMetadata(chunkDir, uploadId);
+         if (metadata == null) return BadRequest("Upload metadata is required for upload validation");
+         var totalChunks = metadata["TotalChunks"];
          var uploadedChunks = Directory.GetFiles(chunkDir, "chunk_*").Length;
         
          return Ok(new
@@ -116,16 +118,71 @@ public class FileUploadController: ControllerBase
              isComplete = uploadedChunks == totalChunks
          });    
     }
+
+    [HttpPost("upload-complete")]
+    public async Task<IActionResult> CompleteMergeUpload([FromQuery] string uploadId)
+    {
+        if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest("Missing uploadId");
+        var chunkUploadPath = Path.Combine(_uploadPath, "temp" , uploadId);
+        if (!Directory.Exists(chunkUploadPath))
+            return BadRequest("Upload session does not exists kindly initialize the upload session");
+
+        var metadata = GetFileMetadata(chunkUploadPath, uploadId);
+        if (metadata == null) return BadRequest("Upload metadata is required for upload validation");
+
+        var fileName = metadata["FileName"];
+        var totalChunks = metadata["TotalChunks"];
+
+        // Sort all chunks in correct order
+        var uploadedChunks = Directory.GetFiles(chunkUploadPath, "chunk_*")
+            .OrderBy(f => int.Parse(Path.GetFileName(f).Split('_')[1]))
+            .ToList();
+        
+        if (uploadedChunks.Count != totalChunks) return BadRequest($"Upload not complete. Total required chunks {totalChunks} but got {uploadedChunks.Count}");
+
+        var finalFilePath = Path.Combine(_uploadPath, fileName);
+        
+        await using var fileStream = new FileStream(finalFilePath, FileMode.Create);
+        foreach (var chunkFilePath in uploadedChunks)
+        {
+            await using var chunk = new FileStream(chunkFilePath, FileMode.Open);
+            await chunk.CopyToAsync(fileStream);
+        }
+        
+        Directory.Delete(chunkUploadPath, true);
+        
+        var fileInfo = new FileInfo(finalFilePath);
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var publicUrl = $"{baseUrl}/uploads/{fileName}";
+
+        return Ok(new
+        {
+            message = "File assembled successfully.",
+            fileName,
+            totalChunks,
+            sizeInMB = Math.Round(fileInfo.Length / (1024.0 * 1024.0), 2),
+            publicUrl,
+            completedAt = DateTime.UtcNow
+        });    
+    }
     
 
-    private int GetTotalChunksFromMetadata(string chunkDir)
+    private static Dictionary<string, dynamic>?  GetFileMetadata(string chunkDir, string uploadId)
     {
+        var result = new Dictionary<string, dynamic>();
         var metadataPath = Path.Combine(chunkDir, "metadata.json");
-        if (!System.IO.File.Exists(metadataPath)) return 0;
+        if (!System.IO.File.Exists(metadataPath)) return null;
         var metadata = JsonDocument.Parse(System.IO.File.ReadAllText(metadataPath));
-        return metadata.RootElement.TryGetProperty("TotalChunks", out var totalChunks)
+        var  chunks =  metadata.RootElement.TryGetProperty("TotalChunks", out var totalChunks)
             ? totalChunks.GetInt32()
             : 0;
+        var name = metadata.RootElement.TryGetProperty("FileName", out var fileName)
+            ? fileName.ToString()
+            : $"merged{uploadId}";
+        result.Add("FileName", name);
+        result.Add("TotalChunks", chunks);
+        return result ;
     }
+    
 
 }
