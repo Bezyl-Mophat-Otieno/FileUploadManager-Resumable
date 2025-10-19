@@ -72,9 +72,9 @@ public class FileUploadController: ControllerBase
         var metadataPath = Path.Combine(chunkUploadPath, "metadata.json");
         var metadata = JsonSerializer.Serialize(new
         {
-            fileName = request.FileName,
-            chunkSize = request.TotalChunks,
-            createdAt = DateTime.Now,
+            request.FileName,
+            request.TotalChunks,
+            createdAt = DateTime.Now
 
         });
         System.IO.File.WriteAllText( metadataPath,metadata);
@@ -85,6 +85,47 @@ public class FileUploadController: ControllerBase
             message = "Upload session initialized successfully."
         });
 
+    }
+
+    [HttpPost("chunk-upload")]
+    [RequestSizeLimit(100_000_000)]
+    public async Task<IActionResult> ChunkUpload([FromQuery] int chunkIndex, [FromQuery] string uploadId, IFormFile  chunk )
+    {
+        if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest("Missing uploadId");
+        if (chunk.Length == 0) return BadRequest("Missing chunk file that is required");
+        
+        var chunkDir = Path.Combine(_uploadPath, "temp", uploadId);
+        if (!Directory.Exists(chunkDir))
+            return NotFound("Upload session not found. Initialize first.");
+
+        var chunkFileName = $"chunk_{chunkIndex}";
+        
+         await using var stream  = new FileStream(Path.Combine(chunkDir, chunkFileName),  FileMode.Create);
+         await chunk.CopyToAsync(stream);
+
+         var totalChunks = GetTotalChunksFromMetadata(chunkDir);
+         var uploadedChunks = Directory.GetFiles(chunkDir, "chunk_*").Length;
+        
+         return Ok(new
+         {
+             message = $"Chunk {chunkIndex} received successfully.",
+             uploadId,
+             chunkIndex,
+             totalChunks,
+             uploadedChunks,
+             isComplete = uploadedChunks == totalChunks
+         });    
+    }
+    
+
+    private int GetTotalChunksFromMetadata(string chunkDir)
+    {
+        var metadataPath = Path.Combine(chunkDir, "metadata.json");
+        if (!System.IO.File.Exists(metadataPath)) return 0;
+        var metadata = JsonDocument.Parse(System.IO.File.ReadAllText(metadataPath));
+        return metadata.RootElement.TryGetProperty("TotalChunks", out var totalChunks)
+            ? totalChunks.GetInt32()
+            : 0;
     }
 
 }
