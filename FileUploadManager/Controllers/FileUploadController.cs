@@ -117,7 +117,7 @@ public class FileUploadController: ControllerBase
          }));    
     }
 
-    [HttpPost("upload/comple")]
+    [HttpPost("upload/complete")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CompleteMergeUpload([FromQuery] string uploadId)

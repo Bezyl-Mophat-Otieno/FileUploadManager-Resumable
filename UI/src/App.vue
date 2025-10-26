@@ -7,7 +7,7 @@ const totalChunks = ref(0);
 const uploadedChunks = ref(0);
 const isUploading = ref(false);
 const isUploadComplete = ref(false);
-const uploadedFileUrl = ref(null);
+const uploadedFileUrl = ref<string | null>(null);
 const uploadProgress = computed(() => {
   if (totalChunks.value === 0) return 0;
   return Math.round((uploadedChunks.value / totalChunks.value) * 100);
@@ -44,14 +44,22 @@ const handleOnFileSelection = async (e: Event) => {
       return;
     }
     // 1. Upload the chunks sequentially to help up track progress easily
-    const uploadId = uploadInitResponse.data.uploadId;
+    const uploadId = uploadInitResponse.data?.uploadId;
+    if(!uploadId){
+      toast.add({severity:'error', summary:'Upload Initialization Failed', detail:`Upload ID is missing in the response.`, life:5000});
+      return;
+    }
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const chunkIndex = i + 1;
+      if(!chunk){
+        toast.add({severity:'error', summary:`Chunk ${chunkIndex} Missing`, detail:`Chunk ${chunkIndex} is missing.`, life:5000});
+        return;
+      }
       const uploadChunkResponse = await uploadChunk({uploadId, chunkIndex, chunk});
       if(uploadChunkResponse.success){
-        uploadedChunks.value += uploadChunkResponse.data.uploadedChunks;
-        isUploadComplete.value = uploadChunkResponse.data.isComplete;
+        uploadedChunks.value += uploadChunkResponse.data?.uploadedChunks ?? 1;
+        isUploadComplete.value = uploadChunkResponse.data?.isComplete ?? false;
         toast.add({severity:'info', summary:`Chunk ${chunkIndex} Uploaded`, detail:`Chunk ${chunkIndex} of ${totalChunks.value} uploaded successfully.`, life:3000});
 
       } else {
@@ -67,11 +75,17 @@ const handleOnFileSelection = async (e: Event) => {
     // 3. Finalize upload session
     const completeUploadResponse = await completeUpload({uploadId});
     if(completeUploadResponse.success){
-      uploadedFileUrl.value = completeUploadResponse.data.fileUrl;
+      uploadedFileUrl.value = completeUploadResponse.data?.fileUrl ?? null;
       toast.add({severity:'success', summary:'Upload Complete', detail:`File upload completed successfully.`, life:5000});
     } else {
       toast.add({severity:'error', summary:'Upload Completion Failed', detail:`${completeUploadResponse.message}`, life:5000});
     }
+};
+
+const handlePreview = () => {
+  if (uploadedFileUrl.value) {
+    window.open(uploadedFileUrl.value, '_blank');
+  }
 };
 
 
@@ -116,7 +130,7 @@ const handleOnFileSelection = async (e: Event) => {
       </div>
 
       <!-- Preview Button -->
-      <button class="preview-btn" :disabled="!isUploadComplete || isUploading" @click="window.open(uploadedFileUrl, '_blank')">
+      <button class="preview-btn" :disabled="!isUploadComplete || isUploading" @click="handlePreview">
         Preview File
       </button>
     </div>

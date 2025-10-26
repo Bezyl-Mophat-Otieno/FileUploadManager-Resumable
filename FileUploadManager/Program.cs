@@ -24,6 +24,13 @@ public class Program
             app.UseSwaggerUI();
         }
 
+        app.UseCors(policy =>
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        });
+
         app.UseStaticFiles();
 
         app.MapControllers();
