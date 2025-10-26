@@ -1,34 +1,39 @@
-interface InitiUploadRequest {
+export interface InitiUploadRequest {
     fileName: string;
     totalChunks: number;
 
 }
+export interface ApiResponse<T = any> {
+    success: boolean;
+    message: string;
+    data?: T;
+}
 
-interface InitiUploadResponse {
+export interface InitiUploadResponse {
     uploadId: string;
     message: string;
 }
 
-interface UploadChunkRequest {
+export interface UploadChunkRequest {
     uploadId: string;
     chunkIndex: number;
-    chunkData: string; // Base64 encoded string
+    chunk: File
 }
 
-interface UploadChunkResponse {
+export interface UploadChunkResponse {
     message: string;
     uploadId: string;
     chunkIndex: number;
+    uploadedChunks: number;
     totalChunks: number;
     isComplete: boolean;
 }
 
-
-interface CompleteUploadRequest {
+export interface CompleteUploadRequest {
     uploadId: string;
 }
 
-interface CompleteUploadResponse {
+export interface CompleteUploadResponse {
     message: string;
     fileName: string;
     totalChunks: number;

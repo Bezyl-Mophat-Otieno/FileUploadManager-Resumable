@@ -9,6 +9,7 @@ namespace FileUploadManager.Controllers;
 public class FileUploadController: ControllerBase
 {
     private readonly string _uploadPath;
+    private const string  TotalChunksKey = "TotalChunks";
     public FileUploadController(IWebHostEnvironment env)
     {
         _uploadPath = Path.Combine(env.ContentRootPath, "wwwroot", "uploads");
@@ -20,13 +21,14 @@ public class FileUploadController: ControllerBase
 
     }
 
-    [HttpPost("default")]
+    [HttpPost("upload")]
     [RequestSizeLimit(100_000_000)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult> UploadFile(IFormFile file)
     {
         if (file.Length == 0)
         {
-            return BadRequest("No file uploaded");
+            return BadRequest(new ApiResponse(false, "No file uploaded."));
         }
         
         var fileName = file.FileName;
@@ -39,21 +41,19 @@ public class FileUploadController: ControllerBase
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
         var fileUrl = $"{baseUrl}/uploads/{newFileName}";
 
-        return Ok(new
+        return Ok(new ApiResponse(true, "File uploaded successfully", new
         {
-            fileName = file.FileName,
-            savedAs = newFileName,
-            contentType = file.ContentType,
-            sizeInKBB = Math.Round((file.Length / 1024.0), 2),
-            uploadTime = DateTime.UtcNow,
-            publicUrl = fileUrl
-            
-        });
+            fileName = newFileName,
+            sizeInMB = Math.Round(file.Length / (1024.0 * 1024.0), 2),
+            fileUrl,
+            uploadedAt = DateTime.UtcNow
+        }));
 
 
     }
 
-    [HttpPost("chunk-upload/init")]
+    [HttpPost("upload/initiate")]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     public IActionResult InitializeChunkUpload([FromBody] InitiUploadRequest request)
     {
         var uploadId = Guid.NewGuid().ToString();
@@ -79,20 +79,20 @@ public class FileUploadController: ControllerBase
         });
         System.IO.File.WriteAllText( metadataPath,metadata);
 
-        return Ok(new
+        return Ok(new ApiResponse(true, "Upload session initialized successfully.", new
         {
-            uploadId,
-            message = "Upload session initialized successfully."
-        });
+            uploadId
+        }));
 
     }
 
-    [HttpPost("chunk-upload")]
+    [HttpPost("upload/chunk")]
     [RequestSizeLimit(100_000_000)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> ChunkUpload([FromQuery] int chunkIndex, [FromQuery] string uploadId, IFormFile  chunk )
     {
-        if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest("Missing uploadId");
-        if (chunk.Length == 0) return BadRequest("Missing chunk file that is required");
+        if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest(new ApiResponse(false, "Missing uploadId"));
+        if (chunk.Length == 0) return BadRequest(new ApiResponse(false, "Chunk file is empty."));
         
         var chunkDir = Path.Combine(_uploadPath, "temp", uploadId);
         if (!Directory.Exists(chunkDir))
@@ -104,34 +104,34 @@ public class FileUploadController: ControllerBase
          await chunk.CopyToAsync(stream);
 
          var metadata = GetFileMetadata(chunkDir, uploadId);
-         if (metadata == null) return BadRequest("Upload metadata is required for upload validation");
-         var totalChunks = metadata["TotalChunks"];
+         if (metadata == null) return BadRequest();
+         var totalChunks = metadata[TotalChunksKey];
          var uploadedChunks = Directory.GetFiles(chunkDir, "chunk_*").Length;
         
-         return Ok(new
+         return Ok(new ApiResponse(true, "Chunk uploaded successfully.", new
          {
-             message = $"Chunk {chunkIndex} received successfully.",
-             uploadId,
              chunkIndex,
-             totalChunks,
              uploadedChunks,
+             totalChunks,
              isComplete = uploadedChunks == totalChunks
-         });    
+         }));    
     }
 
-    [HttpPost("upload-complete")]
+    [HttpPost("upload/comple")]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CompleteMergeUpload([FromQuery] string uploadId)
     {
         if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest("Missing uploadId");
         var chunkUploadPath = Path.Combine(_uploadPath, "temp" , uploadId);
         if (!Directory.Exists(chunkUploadPath))
-            return BadRequest("Upload session does not exists kindly initialize the upload session");
+            return BadRequest(new ApiResponse(false, "Upload session not found. Initialize first."));
 
         var metadata = GetFileMetadata(chunkUploadPath, uploadId);
-        if (metadata == null) return BadRequest("Upload metadata is required for upload validation");
+        if (metadata == null) return BadRequest(new ApiResponse(false, "Upload metadata is required for merging chunks."));
 
         var fileName = metadata["FileName"];
-        var totalChunks = metadata["TotalChunks"];
+        var totalChunks = metadata[TotalChunksKey];
 
         // Sort all chunks in correct order
         var uploadedChunks = Directory.GetFiles(chunkUploadPath, "chunk_*")
@@ -153,17 +153,15 @@ public class FileUploadController: ControllerBase
         
         var fileInfo = new FileInfo(finalFilePath);
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var publicUrl = $"{baseUrl}/uploads/{fileName}";
+        var fileUrl = $"{baseUrl}/uploads/{fileName}";
 
-        return Ok(new
+        return Ok(new ApiResponse(true, "File merged successfully.", new
         {
-            message = "File assembled successfully.",
             fileName,
-            totalChunks,
             sizeInMB = Math.Round(fileInfo.Length / (1024.0 * 1024.0), 2),
-            publicUrl,
-            completedAt = DateTime.UtcNow
-        });    
+            fileUrl,
+            uploadedAt = DateTime.UtcNow
+        }));    
     }
     
 
@@ -173,14 +171,14 @@ public class FileUploadController: ControllerBase
         var metadataPath = Path.Combine(chunkDir, "metadata.json");
         if (!System.IO.File.Exists(metadataPath)) return null;
         var metadata = JsonDocument.Parse(System.IO.File.ReadAllText(metadataPath));
-        var  chunks =  metadata.RootElement.TryGetProperty("TotalChunks", out var totalChunks)
+        var  chunks =  metadata.RootElement.TryGetProperty(TotalChunksKey, out var totalChunks)
             ? totalChunks.GetInt32()
             : 0;
         var name = metadata.RootElement.TryGetProperty("FileName", out var fileName)
             ? fileName.ToString()
             : $"merged{uploadId}";
         result.Add("FileName", name);
-        result.Add("TotalChunks", chunks);
+        result.Add(TotalChunksKey, chunks);
         return result ;
     }
     

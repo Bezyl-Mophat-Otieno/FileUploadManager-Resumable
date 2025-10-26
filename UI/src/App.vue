@@ -1,6 +1,79 @@
 <script setup lang="ts">
+import { useToast } from 'primevue';
+import { uploadChunk, uploadInit, completeUpload } from './api/endpoints';
+import { computed, ref } from 'vue';
+const toast = useToast();
+const totalChunks = ref(0);
+const uploadedChunks = ref(0);
+const isUploading = ref(false);
+const isUploadComplete = ref(false);
+const uploadedFileUrl = ref(null);
+const uploadProgress = computed(() => {
+  if (totalChunks.value === 0) return 0;
+  return Math.round((uploadedChunks.value / totalChunks.value) * 100);
+});
 
-const handleOnFileSelection = () => {};
+const chunkFile = (file: File, chunkSize: number): File[]  => {
+  const chunks:File[] = [];
+  let offset = 0;
+
+  while (offset < file.size) {
+    const chunk = file.slice(offset, offset + chunkSize);
+    chunks.push(chunk as File);
+    offset += chunkSize;
+  }
+
+  return chunks;
+};
+const handleOnFileSelection = async (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const files = target.files;
+  if (!files?.length) {
+    return;
+  }
+
+  const file = files[0] as File;
+  const fileName = file.name;
+  const chunkSize = 1 * 2000 // 1 KB
+  const chunks = chunkFile(file, chunkSize);
+  totalChunks.value = chunks.length;
+  uploadedChunks.value = 0;
+    const uploadInitResponse = await uploadInit({ fileName, totalChunks: totalChunks.value });
+    if(!uploadInitResponse.success){
+      toast.add({severity:'error', summary:'Upload Initialization Failed', detail:`${uploadInitResponse.message}`, life:5000});
+      return;
+    }
+    // 1. Upload the chunks sequentially to help up track progress easily
+    const uploadId = uploadInitResponse.data.uploadId;
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkIndex = i + 1;
+      const uploadChunkResponse = await uploadChunk({uploadId, chunkIndex, chunk});
+      if(uploadChunkResponse.success){
+        uploadedChunks.value += uploadChunkResponse.data.uploadedChunks;
+        isUploadComplete.value = uploadChunkResponse.data.isComplete;
+        toast.add({severity:'info', summary:`Chunk ${chunkIndex} Uploaded`, detail:`Chunk ${chunkIndex} of ${totalChunks.value} uploaded successfully.`, life:3000});
+
+      } else {
+        toast.add({severity:'error', summary:`Chunk ${chunkIndex} Upload Failed`, detail:`${uploadChunkResponse.message}`, life:5000});
+        return;
+      }
+    }
+
+    if(!isUploadComplete.value){
+      toast.add({severity:'error', summary:'Upload Incomplete', detail:`File upload did not complete successfully.`, life:5000});
+      return;
+    }
+    // 3. Finalize upload session
+    const completeUploadResponse = await completeUpload({uploadId});
+    if(completeUploadResponse.success){
+      uploadedFileUrl.value = completeUploadResponse.data.fileUrl;
+      toast.add({severity:'success', summary:'Upload Complete', detail:`File upload completed successfully.`, life:5000});
+    } else {
+      toast.add({severity:'error', summary:'Upload Completion Failed', detail:`${completeUploadResponse.message}`, life:5000});
+    }
+};
+
 
 </script>
 
@@ -37,11 +110,13 @@ const handleOnFileSelection = () => {};
 
       <!-- Progress Bar -->
       <div class="progress-container">
-        <div class="progress-bar"></div>
+
+        <div class="progress-bar" :style="{ width: uploadProgress + '%'}"></div>
+        
       </div>
 
       <!-- Preview Button -->
-      <button class="preview-btn" disabled>
+      <button class="preview-btn" :disabled="!isUploadComplete || isUploading" @click="window.open(uploadedFileUrl, '_blank')">
         Preview File
       </button>
     </div>

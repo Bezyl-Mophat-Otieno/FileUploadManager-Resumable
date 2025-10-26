@@ -1,4 +1,4 @@
-﻿**/.dockerignore
+﻿ApiResponse**/.dockerignore
 **/.env
 **/.git
 **/.gitignore
