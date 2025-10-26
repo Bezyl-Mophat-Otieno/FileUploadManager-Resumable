@@ -34,7 +34,7 @@ const handleOnFileSelection = async (e: Event) => {
 
   const file = files[0] as File;
   const fileName = file.name;
-  const chunkSize = 1 * 2000 // 1 KB
+  const chunkSize = 1 * 2000 // 2 KB
   const chunks = chunkFile(file, chunkSize);
   totalChunks.value = chunks.length;
   uploadedChunks.value = 0;
